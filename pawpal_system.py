@@ -29,9 +29,11 @@ class Task:
     category: str = "other"       # "feeding" | "walk" | "medication" | "appointment" | "grooming" | "other"
     preferred_time: str = "any"   # "morning" | "afternoon" | "evening" | "any"
 
+    @property
     def priority_value(self) -> int:
         pass
 
+    @property
     def category_weight(self) -> int:
         pass
 
@@ -62,6 +64,7 @@ class ScheduledTask:
         self.start_minute = start_minute
         self.reasoning = reasoning
 
+    @property
     def end_minute(self) -> int:
         pass
 

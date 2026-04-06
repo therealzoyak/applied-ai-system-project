@@ -32,8 +32,13 @@ This design may be simplified or adjusted if the current structure proves to be 
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+After reviewing the skeleton, three issues came up:
+
+1. **`priority_value`, `category_weight`, and `end_minute` changed from methods to `@property`** — these originally had empty parentheses like regular methods, but they're purely derived values with no arguments or side effects. Making them properties means callers write `task.priority_value` instead of `task.priority_value()`, which is more natural in Python and matches how dataclass fields feel to use.
+
+2. **`Task` input validation identified as a risk** — the `priority` and `preferred_time` fields accept any string with no guard. A typo would pass silently and cause a `KeyError` deep inside the scheduler. The fix (a `__post_init__` check) will be added during the implementation step.
+
+3. **`Owner.pets` vs `Scheduler` taking a single `Pet` — kept as-is by choice** — `Owner` stores a list of pets and has `add_pet()`, but `Scheduler` accepts just one `Pet` directly. This inconsistency was flagged but left intentionally: the app plans one pet's day at a time, so the scheduler doesn't need to loop over all pets. This is a documented simplification, not an oversight.
 
 ---
 
