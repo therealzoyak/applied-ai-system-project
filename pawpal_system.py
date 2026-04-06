@@ -3,7 +3,9 @@ PawPal+ — full implementation
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import date, timedelta
+from typing import Optional
 
 
 # ---------------------------------------------------------------------------
@@ -29,6 +31,9 @@ TIME_WINDOWS = {
     "any":       (0,   720),
 }
 
+# Sort order for preferred_time (used by sort_tasks_by_time)
+TIME_WINDOW_ORDER = {"morning": 0, "afternoon": 1, "evening": 2, "any": 3}
+
 DAY_START_HOUR = 8  # schedule anchored to 8:00 AM
 
 
@@ -47,6 +52,7 @@ class Task:
     frequency: str = "daily"      # "daily" | "weekly" | "as_needed"
     completed: bool = False
     pet_name: str = ""            # set automatically by Pet.add_task()
+    due_date: Optional[date] = None  # used for recurring task scheduling
 
     def __post_init__(self) -> None:
         if self.priority not in PRIORITY_VALUES:
@@ -68,12 +74,37 @@ class Task:
         """Higher value = scheduled earlier."""
         return (self.priority_value, self.category_weight)
 
-    def mark_complete(self) -> None:
+    def mark_complete(self) -> Optional[Task]:
+        """
+        Mark this task as done and return the next occurrence if it recurs.
+
+        Returns a fresh Task (with completed=False and an updated due_date)
+        for 'daily' and 'weekly' tasks, or None for 'as_needed' tasks.
+        Uses timedelta so the due_date math is always accurate.
+        """
         self.completed = True
+        if self.frequency == "daily":
+            next_date = (self.due_date or date.today()) + timedelta(days=1)
+        elif self.frequency == "weekly":
+            next_date = (self.due_date or date.today()) + timedelta(weeks=1)
+        else:
+            return None
+        return replace(self, completed=False, due_date=next_date)
+
+    def next_occurrence(self) -> Optional[Task]:
+        """Return the next scheduled instance without marking this one complete."""
+        if self.frequency == "daily":
+            next_date = (self.due_date or date.today()) + timedelta(days=1)
+        elif self.frequency == "weekly":
+            next_date = (self.due_date or date.today()) + timedelta(weeks=1)
+        else:
+            return None
+        return replace(self, completed=False, due_date=next_date)
 
     def summary(self) -> str:
         status = "done" if self.completed else "pending"
-        return f"{self.title} ({self.duration_minutes} min, {self.priority}, {self.category}, {status})"
+        due = f", due {self.due_date}" if self.due_date else ""
+        return f"{self.title} ({self.duration_minutes} min, {self.priority}, {self.category}, {status}{due})"
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +125,7 @@ class Pet:
         self.tasks.append(task)
 
     def get_tasks(self, include_completed: bool = False) -> list[Task]:
-        """Return tasks for this pet, optionally filtering out completed ones."""
+        """Return tasks for this pet, optionally including completed ones."""
         if include_completed:
             return list(self.tasks)
         return [t for t in self.tasks if not t.completed]
@@ -129,6 +160,25 @@ class Owner:
         for pet in self.pets:
             all_tasks.extend(pet.get_tasks(include_completed=include_completed))
         return all_tasks
+
+    def filter_tasks(
+        self,
+        pet_name: Optional[str] = None,
+        completed: Optional[bool] = None,
+    ) -> list[Task]:
+        """
+        Filter tasks across all pets by pet name and/or completion status.
+
+        - pet_name: if given, only return tasks belonging to that pet.
+        - completed: if True return only done tasks; if False return only pending;
+          if None return all tasks regardless of status.
+        """
+        tasks = self.get_all_tasks(include_completed=True)
+        if pet_name is not None:
+            tasks = [t for t in tasks if t.pet_name == pet_name]
+        if completed is not None:
+            tasks = [t for t in tasks if t.completed == completed]
+        return tasks
 
     def summary(self) -> str:
         hours, mins = divmod(self.available_minutes, 60)
@@ -187,6 +237,7 @@ class DailySchedule:
         self.owner = owner
         self.scheduled: list[ScheduledTask] = []
         self.deferred: list[Task] = []
+        self.conflicts: list[str] = []  # populated by Scheduler.detect_conflicts()
 
     @property
     def total_minutes_used(self) -> int:
@@ -203,6 +254,12 @@ class DailySchedule:
                 lines.append(str(st))
         else:
             lines.append("  (no tasks scheduled)")
+
+        if self.conflicts:
+            lines.append("-" * 60)
+            lines.append("Conflicts detected:")
+            for w in self.conflicts:
+                lines.append(f"  {w}")
 
         if self.deferred:
             lines.append("-" * 60)
@@ -233,13 +290,15 @@ class Scheduler:
         2. Sort descending by (priority_value, category_weight).
         3. For each task, find the earliest valid slot respecting preferred_time.
         4. Place task if it fits within remaining available minutes; otherwise defer.
-        5. Return a DailySchedule sorted chronologically.
+        5. Run detect_conflicts() on the finished schedule.
+        6. Return a DailySchedule sorted chronologically.
     """
 
     def __init__(self, owner: Owner) -> None:
         self.owner = owner
 
     def generate(self) -> DailySchedule:
+        """Generate a daily schedule and check it for conflicts."""
         schedule = DailySchedule(owner=self.owner)
         tasks = self.owner.get_all_tasks(include_completed=False)
         sorted_tasks = sorted(tasks, key=lambda t: t.sort_key(), reverse=True)
@@ -248,7 +307,6 @@ class Scheduler:
         minutes_remaining = self.owner.available_minutes
 
         for task in sorted_tasks:
-            # Bail early if the task alone exceeds what's left
             if task.duration_minutes > minutes_remaining:
                 schedule.deferred.append(task)
                 continue
@@ -259,14 +317,12 @@ class Scheduler:
 
             if task.preferred_time != "any":
                 if current_minute < win_start:
-                    # Advance clock to the preferred window
                     slot_start = win_start
                     window_note = (
                         f"Scheduled at the start of the preferred "
                         f"{task.preferred_time} window."
                     )
                 elif current_minute > win_end:
-                    # Window already passed — schedule at current position
                     slot_start = current_minute
                     window_note = (
                         f"Preferred {task.preferred_time} window already passed; "
@@ -278,7 +334,6 @@ class Scheduler:
             else:
                 window_note = "No time preference; placed at next available slot."
 
-            # Account for any gap created by jumping to a window start
             gap = max(0, slot_start - current_minute)
             if task.duration_minutes > minutes_remaining - gap:
                 schedule.deferred.append(task)
@@ -292,7 +347,42 @@ class Scheduler:
             minutes_remaining -= gap + task.duration_minutes
 
         schedule.scheduled.sort(key=lambda st: st.start_minute)
+        schedule.conflicts = self.detect_conflicts(schedule)
         return schedule
+
+    @staticmethod
+    def sort_tasks_by_time(tasks: list[Task]) -> list[Task]:
+        """
+        Sort tasks by preferred time-of-day window: morning → afternoon → evening → any.
+
+        Uses TIME_WINDOW_ORDER so the sort key is a simple integer lookup
+        rather than comparing raw strings, which would sort alphabetically.
+        """
+        return sorted(tasks, key=lambda t: TIME_WINDOW_ORDER.get(t.preferred_time, 3))
+
+    def detect_conflicts(self, schedule: DailySchedule) -> list[str]:
+        """
+        Check the scheduled tasks for overlapping time ranges.
+
+        Two tasks conflict when their intervals overlap:
+            task A starts before task B ends AND task B starts before task A ends.
+
+        Returns a list of warning strings (empty list = no conflicts).
+        This is a lightweight O(n²) check — fine for daily pet-care scales
+        where n is typically under 20 tasks.
+        """
+        warnings = []
+        items = schedule.scheduled
+        for i in range(len(items)):
+            for j in range(i + 1, len(items)):
+                a, b = items[i], items[j]
+                if a.start_minute < b.end_minute and b.start_minute < a.end_minute:
+                    warnings.append(
+                        f"⚠ Conflict: '{a.task.title}' "
+                        f"({a.start_time_str}–{a.end_time_str}) overlaps with "
+                        f"'{b.task.title}' ({b.start_time_str}–{b.end_time_str})"
+                    )
+        return warnings
 
     def _build_reasoning(self, task: Task, window_note: str) -> str:
         priority_desc = {

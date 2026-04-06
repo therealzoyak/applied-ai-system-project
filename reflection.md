@@ -46,13 +46,19 @@ After reviewing the skeleton, three issues came up:
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler considers three constraints, in this order of importance:
+
+1. **Priority level** (high / medium / low) — this is the primary sort key. A high-priority medication will always be considered before a low-priority grooming session, regardless of time preference.
+2. **Category weight** (medication > appointment > feeding > walk > grooming > other) — used as a tiebreaker when two tasks share the same priority level. This reflects real-world urgency: missing a medication is more consequential than skipping a walk.
+3. **Preferred time window** (morning / afternoon / evening / any) — the scheduler tries to place each task in its preferred window, but will fall back to the next available slot if the window has already passed. It won't displace a higher-priority task just to honour a time preference.
+
+The owner's `available_minutes` acts as a hard cap: any task that doesn't fit is deferred rather than over-scheduled.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+The conflict detector checks for *exact time-range overlaps* in the final schedule — two tasks conflict only if their `[start, end)` intervals literally intersect. It does not predict soft conflicts like "these two tasks are both in the morning window and one might push the other late." 
+
+This is a reasonable tradeoff for a daily pet-care app: the greedy scheduler already prevents true overlaps by advancing the clock after each placement, so the detector's main value is as a safety net for manually constructed or externally imported schedules. Checking only exact overlaps keeps the logic simple (an O(n²) pair scan) and avoids false positives from overly cautious proximity warnings. A more sophisticated version could flag tasks within a configurable buffer window, but that would require exposing another setting to the user without much practical benefit at this scale.
 
 ---
 
