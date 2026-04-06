@@ -14,8 +14,21 @@ Before writing any code, I identified three core actions a user should be able t
 
 These three actions map directly to the three responsibilities the system must handle: representing entities (owner, pet), representing work (tasks), and reasoning about how to organize that work (scheduler).
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+The initial UML design includes six classes:
+
+- **Owner** — holds the owner's name and daily available minutes; can add pets and return a summary.
+- **Pet** — holds name, species, and any special needs; can return a summary.
+- **Task** — holds title, duration, priority, category, and preferred time of day; exposes a sort key used by the scheduler.
+- **Scheduler** — takes an Owner, a Pet, and a list of Tasks; generates a DailySchedule using a priority-and-category sort algorithm.
+- **ScheduledTask** — wraps a Task with a concrete start time and a plain-language reasoning string.
+- **DailySchedule** — the output object; holds the list of placed ScheduledTasks and any deferred Tasks that didn't fit.
+
+Key relationship decisions:
+- Owner owns 1 or more Pets, but the Scheduler plans for one Pet at a time (simplification).
+- ScheduledTask *wraps* a Task (composition) rather than inheriting from it, because a scheduled task has a task — it isn't a special kind of task.
+- Scheduler is stateless — it produces a DailySchedule but doesn't store it, making it reusable.
+
+This design may be simplified or adjusted if the current structure proves to be a problem during implementation.
 
 **b. Design changes**
 
