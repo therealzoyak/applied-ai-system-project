@@ -4,6 +4,16 @@
 
 **a. Initial design**
 
+Before writing any code, I identified three core actions a user should be able to perform:
+
+1. **Register a pet and owner** — The user enters their name, their pet's name, species, and how many minutes per day they have available for pet care. This sets the constraints that every other part of the system works within. Without knowing who the owner is and how much time they have, the scheduler has nothing to optimize against.
+
+2. **Add care tasks** — The user creates individual tasks (e.g., morning walk, dinner feeding, heartworm medication) and gives each one a title, duration in minutes, priority level (high / medium / low), category (walk, feeding, medication, appointment, grooming), and an optional preferred time of day (morning, afternoon, evening, or any). This models the real-world reality that not all pet care needs are equal — a medication is more urgent than a grooming session — and that some tasks belong at specific times of day.
+
+3. **Generate and view today's schedule** — The user asks the system to produce an ordered daily plan. The scheduler takes all registered tasks, sorts them by priority and category importance, fits them into the owner's available time window, and returns a schedule with a plain-language explanation for why each task was placed at its particular time slot. Tasks that don't fit are surfaced as deferred so the owner knows what was left out and why.
+
+These three actions map directly to the three responsibilities the system must handle: representing entities (owner, pet), representing work (tasks), and reasoning about how to organize that work (scheduler).
+
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
