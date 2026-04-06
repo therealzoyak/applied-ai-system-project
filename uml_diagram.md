@@ -2,63 +2,91 @@
 
 ```mermaid
 classDiagram
-    class Owner {
-        +String name
-        +int available_minutes
-        +add_pet(pet) None
-        +summary() String
+    class Task {
+        +str title
+        +int duration_minutes
+        +str priority
+        +str category
+        +str preferred_time
+        +str frequency
+        +bool completed
+        +str pet_name
+        +date due_date
+        +int priority_value
+        +int category_weight
+        +sort_key() tuple
+        +mark_complete() Task
+        +next_occurrence() Task
+        +summary() str
     }
 
     class Pet {
-        +String name
-        +String species
-        +List~String~ special_needs
-        +summary() String
+        +str name
+        +str species
+        +list~str~ special_needs
+        +list~Task~ tasks
+        +add_task(task: Task) None
+        +get_tasks(include_completed: bool) list~Task~
+        +summary() str
     }
 
-    class Task {
-        +String title
-        +int duration_minutes
-        +String priority
-        +String category
-        +String preferred_time
-        +priority_value() int
-        +category_weight() int
-        +sort_key() tuple
-    }
-
-    class Scheduler {
-        +Owner owner
-        +Pet pet
-        +List~Task~ tasks
-        +generate() DailySchedule
-        -_build_reasoning(task, slot, note) String
+    class Owner {
+        +str name
+        +int available_minutes
+        +list~Pet~ pets
+        +add_pet(pet: Pet) None
+        +get_all_tasks(include_completed: bool) list~Task~
+        +filter_tasks(pet_name, completed) list~Task~
+        +summary() str
     }
 
     class ScheduledTask {
         +Task task
         +int start_minute
-        +String reasoning
-        +end_minute() int
-        +start_time_str() String
-        +end_time_str() String
+        +str reasoning
+        +int end_minute
+        +str start_time_str
+        +str end_time_str
     }
 
     class DailySchedule {
         +Owner owner
-        +Pet pet
-        +List~ScheduledTask~ scheduled
-        +List~Task~ deferred
-        +total_minutes_used() int
-        +summary() String
+        +list~ScheduledTask~ scheduled
+        +list~Task~ deferred
+        +list~str~ conflicts
+        +int total_minutes_used
+        +summary() str
     }
 
-    Owner "1" --> "1..*" Pet : owns
-    Owner --> Scheduler : provides context
-    Pet --> Scheduler : provides context
-    Task --> Scheduler : input
+    class Scheduler {
+        +Owner owner
+        +generate() DailySchedule
+        +sort_tasks_by_time(tasks) list~Task~$
+        +detect_conflicts(schedule) list~str~
+        -_build_reasoning(task, window_note) str
+    }
+
+    Pet "1" o-- "0..*" Task : contains
+    Owner "1" o-- "1..*" Pet : owns
+    Owner ..> Scheduler : passed to
     Scheduler --> DailySchedule : generates
-    DailySchedule "1" --> "0..*" ScheduledTask : contains
-    DailySchedule "1" --> "0..*" Task : deferred
+    DailySchedule o-- ScheduledTask : holds
     ScheduledTask --> Task : wraps
+    DailySchedule --> Owner : references
 ```
+
+## Relationship notes
+
+| Arrow | Meaning |
+|-------|---------|
+| `o--` | Aggregation — Pet owns its Tasks; Owner owns its Pets |
+| `-->` | Directed association — Scheduler produces DailySchedule; ScheduledTask wraps a Task |
+| `..>` | Dependency — Scheduler receives an Owner but doesn't own it |
+
+## Key changes from the Phase 1 draft
+
+- Added `ScheduledTask` class (missing entirely from the original diagram).
+- Expanded all classes with their full attributes and methods.
+- Replaced the ambiguous `Pet --> Scheduler` / `Task --> Scheduler` arrows with the correct `Owner ..> Scheduler` dependency (Scheduler talks to Owner, not directly to Pet/Task).
+- Added `DailySchedule.conflicts` list — populated by `detect_conflicts()`.
+- Marked `sort_tasks_by_time` with `$` to indicate it is a static method.

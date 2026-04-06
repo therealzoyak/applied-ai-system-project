@@ -3,12 +3,13 @@ from pawpal_system import Owner, Pet, Task, Scheduler
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 st.title("🐾 PawPal+")
+st.caption("Smart daily scheduling for your pets — sorted, filtered, and conflict-checked automatically.")
 
 # ---------------------------------------------------------------------------
 # Session state — initialised once; survives re-runs
 # ---------------------------------------------------------------------------
 if "owner" not in st.session_state:
-    st.session_state.owner = None   # set when the owner form is submitted
+    st.session_state.owner = None
 
 # ---------------------------------------------------------------------------
 # Step 1: Owner & pet setup
@@ -20,8 +21,6 @@ with st.form("owner_form"):
     available_hours = st.slider("Hours available for pet care today", 1, 12, 3)
     submitted = st.form_submit_button("Save owner")
     if submitted:
-        # Create a fresh Owner and store it in session state.
-        # Any previously added pets are wiped — intentional for this demo.
         st.session_state.owner = Owner(
             name=owner_name,
             available_minutes=available_hours * 60,
@@ -84,20 +83,54 @@ else:
             target_pet.add_task(task)
             st.success(f"Added '{task_title}' to {pet_choice}.")
 
-    # Show all pending tasks
+    # --- Pending tasks with filter controls ---
     all_tasks = owner.get_all_tasks()
     if all_tasks:
-        st.write("**Pending tasks:**")
+        st.subheader("Pending tasks")
+
+        col_filter, col_sort = st.columns(2)
+        with col_filter:
+            pet_filter = st.selectbox(
+                "Filter by pet",
+                ["All pets"] + [p.name for p in owner.pets],
+                key="pet_filter",
+            )
+        with col_sort:
+            sort_mode = st.selectbox(
+                "Sort by",
+                ["Time of day (morning first)", "Priority (high first)"],
+                key="sort_mode",
+            )
+
+        # Apply filter
+        if pet_filter != "All pets":
+            display_tasks = [t for t in all_tasks if t.pet_name == pet_filter]
+        else:
+            display_tasks = list(all_tasks)
+
+        # Apply sort
+        if sort_mode == "Time of day (morning first)":
+            display_tasks = Scheduler.sort_tasks_by_time(display_tasks)
+        else:
+            display_tasks = sorted(
+                display_tasks,
+                key=lambda t: t.priority_value,
+                reverse=True,
+            )
+
+        PRIORITY_COLOR = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+
         st.table([
             {
                 "Pet": t.pet_name,
                 "Task": t.title,
                 "Duration": f"{t.duration_minutes} min",
-                "Priority": t.priority,
+                "Priority": f"{PRIORITY_COLOR.get(t.priority, '')} {t.priority}",
                 "Category": t.category,
                 "Time": t.preferred_time,
+                "Recurs": t.frequency,
             }
-            for t in all_tasks
+            for t in display_tasks
         ])
     else:
         st.info("No tasks yet — add one above.")
@@ -117,23 +150,50 @@ if st.button("Generate schedule"):
         scheduler = Scheduler(owner=owner)
         schedule = scheduler.generate()
 
+        # --- Conflict warnings (shown first so owner can't miss them) ---
+        if schedule.conflicts:
+            st.error(
+                f"**{len(schedule.conflicts)} scheduling conflict(s) detected — "
+                "please review before following this plan.**"
+            )
+            for conflict_msg in schedule.conflicts:
+                st.warning(conflict_msg)
+        else:
+            st.success("No conflicts — your schedule looks clean!")
+
         st.subheader(f"Plan for {owner.name}'s pets")
-        st.caption(f"Time used: {schedule.total_minutes_used} / {owner.available_minutes} min")
+
+        # Progress bar: time used vs available
+        pct = min(schedule.total_minutes_used / owner.available_minutes, 1.0)
+        st.progress(pct, text=f"Time used: {schedule.total_minutes_used} / {owner.available_minutes} min")
 
         if schedule.scheduled:
+            PRIORITY_BADGE = {"high": "🔴 high", "medium": "🟡 medium", "low": "🟢 low"}
+            CATEGORY_ICON = {
+                "medication": "💊", "appointment": "📅", "feeding": "🍽️",
+                "walk": "🦮", "grooming": "✂️", "other": "📋",
+            }
             for st_task in schedule.scheduled:
+                icon = CATEGORY_ICON.get(st_task.task.category, "📋")
+                badge = PRIORITY_BADGE.get(st_task.task.priority, st_task.task.priority)
                 with st.expander(
-                    f"🕐 {st_task.start_time_str} – {st_task.end_time_str}  |  "
-                    f"**{st_task.task.title}** [{st_task.task.pet_name}]"
+                    f"{icon} {st_task.start_time_str} – {st_task.end_time_str}  |  "
+                    f"**{st_task.task.title}** [{st_task.task.pet_name}]  —  {badge}"
                 ):
-                    st.write(f"**Duration:** {st_task.task.duration_minutes} min")
-                    st.write(f"**Priority:** {st_task.task.priority}")
-                    st.write(f"**Category:** {st_task.task.category}")
-                    st.write(f"**Why this slot:** {st_task.reasoning}")
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Duration", f"{st_task.task.duration_minutes} min")
+                    col2.metric("Category", st_task.task.category)
+                    col3.metric("Recurs", st_task.task.frequency)
+                    st.info(f"**Why this slot:** {st_task.reasoning}")
         else:
             st.warning("No tasks could be scheduled within the available time.")
 
+        # --- Deferred tasks ---
         if schedule.deferred:
-            st.subheader("Deferred (didn't fit today)")
+            st.subheader("⏭ Deferred (didn't fit today)")
+            st.caption("These tasks were skipped because the available time ran out.")
             for t in schedule.deferred:
-                st.write(f"- **{t.title}** [{t.pet_name}] — {t.duration_minutes} min, {t.priority} priority")
+                st.write(
+                    f"- **{t.title}** [{t.pet_name}] — "
+                    f"{t.duration_minutes} min, {t.priority} priority"
+                )

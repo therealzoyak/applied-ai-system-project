@@ -1,6 +1,24 @@
 # PawPal+ (Module 2 Project)
 
-You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
+> A smart daily scheduler for pet owners — sort, filter, detect conflicts, and track recurring care tasks, all in one Streamlit app.
+
+## Features
+
+| Feature | How it works |
+|---------|-------------|
+| **Priority-based scheduling** | Tasks are ranked by priority (`high > medium > low`) and category weight (`medication > appointment > feeding > walk > grooming`). Higher-ranked tasks are placed first. |
+| **Sorting by time of day** | `Scheduler.sort_tasks_by_time()` orders tasks morning → afternoon → evening → any using a stable numeric sort — alphabetical string quirks never affect the order. |
+| **Live filtering** | The pending-tasks table can be filtered by pet name and sorted by time-of-day or priority directly in the UI. |
+| **Conflict warnings** | `Scheduler.detect_conflicts()` scans the final schedule for overlapping time intervals. Any conflicts are shown as prominent `st.warning` banners at the top of the schedule so the owner can't miss them. |
+| **Recurring tasks** | `Task.mark_complete()` automatically calculates the next occurrence: `+1 day` for daily tasks, `+7 days` for weekly tasks, `None` for as-needed tasks. |
+| **Deferred tasks** | Tasks that exceed the owner's available time are listed separately so nothing is silently dropped. |
+| **Reasoning display** | Every scheduled slot includes a plain-language explanation of why it was placed there. |
+
+## 📸 Demo
+
+<a href="/course_images/ai110/pawpal_screenshot.png" target="_blank"><img src='/course_images/ai110/pawpal_screenshot.png' title='PawPal App' width='' alt='PawPal App' class='center-block' /></a>
+
+---
 
 ## Scenario
 
@@ -40,6 +58,37 @@ PawPal+ goes beyond a simple task list with four algorithmic features:
 - **Filtering** — `Owner.filter_tasks(pet_name, completed)` lets you slice the task list by pet or completion status without touching the underlying data.
 - **Recurring tasks** — `Task.mark_complete()` returns a fresh `Task` instance for the next occurrence using Python's `timedelta` (`+1 day` for daily, `+7 days` for weekly). `as_needed` tasks return `None`. The original task is marked done; the new one is ready to be added back to the pet.
 - **Conflict detection** — `Scheduler.detect_conflicts()` scans the final schedule for overlapping time intervals and returns plain-language warning strings. Conflicts are also embedded in `DailySchedule.summary()`.
+
+## Testing PawPal+
+
+### Run the tests
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install pytest
+python -m pytest
+```
+
+### What the tests cover
+
+| Area | Tests |
+|------|-------|
+| **Task validation** | Invalid priority, preferred_time, zero/negative duration all raise `ValueError` |
+| **Pet task management** | Adding tasks, pet-name stamping, empty-pet edge case, completed-task filtering |
+| **Recurrence logic** | Daily → +1 day, weekly → +7 days, `as_needed` → `None`; title/duration preserved |
+| **Sorting correctness** | `sort_tasks_by_time` orders morning → afternoon → evening → any; stable sort |
+| **Conflict detection** | Overlapping slots flagged, back-to-back slots not flagged |
+| **Owner filtering** | `filter_tasks(pet_name=…)` and `filter_tasks(completed=…)` slice correctly |
+| **Scheduler constraints** | Tasks deferred when time runs out; no-pets produces empty schedule; high priority before low |
+
+26 tests total.
+
+### Confidence level
+
+★★★★★ — All 26 tests pass. Core scheduling behaviors (sorting, recurrence, conflict detection) are verified with both happy-path and edge-case scenarios.
+
+---
 
 ### Suggested workflow
 

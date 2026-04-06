@@ -3,42 +3,26 @@
 ## 1. System Design
 
 **a. Initial design**
+Main 3 problems: 
+1. Register a pet and owner The user enters their name, their pet's name, species, and how many minutes per day they have available for pet care. 
 
-Before writing any code, I identified three core actions a user should be able to perform:
+2. Adding care tasks: The user creates individual tasks (e.g., morning walk, dinner feeding, heartworm medication) and gives each one a title, duration in minutes, priority level (high / medium / low), category (walk, feeding, medication, appointment, grooming), and an optional preferred time of day (morning, afternoon, evening, or any)
 
-1. **Register a pet and owner** — The user enters their name, their pet's name, species, and how many minutes per day they have available for pet care. This sets the constraints that every other part of the system works within. Without knowing who the owner is and how much time they have, the scheduler has nothing to optimize against.
+3. Generate/view todays schedule: The user asks the system to produce an ordered daily plan. 
 
-2. **Add care tasks** — The user creates individual tasks (e.g., morning walk, dinner feeding, heartworm medication) and gives each one a title, duration in minutes, priority level (high / medium / low), category (walk, feeding, medication, appointment, grooming), and an optional preferred time of day (morning, afternoon, evening, or any). This models the real-world reality that not all pet care needs are equal — a medication is more urgent than a grooming session — and that some tasks belong at specific times of day.
+The initial UML design includes six classes: Owner, Pet, Task, Scheduler, ScheduledTask, and DailySchedule. Owner holds the owner info and their pets, Pet holds the animal's details, Task stores what needs to be done and when, Scheduler takes all of that and produces a plan, ScheduledTask wraps a Task with an actual start time and a reasoning note, and DailySchedule is the final output with everything placed or deferred.
 
-3. **Generate and view today's schedule** — The user asks the system to produce an ordered daily plan. The scheduler takes all registered tasks, sorts them by priority and category importance, fits them into the owner's available time window, and returns a schedule with a plain-language explanation for why each task was placed at its particular time slot. Tasks that don't fit are surfaced as deferred so the owner knows what was left out and why.
-
-These three actions map directly to the three responsibilities the system must handle: representing entities (owner, pet), representing work (tasks), and reasoning about how to organize that work (scheduler).
-
-The initial UML design includes six classes:
-
-- **Owner** — holds the owner's name and daily available minutes; can add pets and return a summary.
-- **Pet** — holds name, species, and any special needs; can return a summary.
-- **Task** — holds title, duration, priority, category, and preferred time of day; exposes a sort key used by the scheduler.
-- **Scheduler** — takes an Owner, a Pet, and a list of Tasks; generates a DailySchedule using a priority-and-category sort algorithm.
-- **ScheduledTask** — wraps a Task with a concrete start time and a plain-language reasoning string.
-- **DailySchedule** — the output object; holds the list of placed ScheduledTasks and any deferred Tasks that didn't fit.
-
-Key relationship decisions:
-- Owner owns 1 or more Pets, but the Scheduler plans for one Pet at a time (simplification).
-- ScheduledTask *wraps* a Task (composition) rather than inheriting from it, because a scheduled task has a task — it isn't a special kind of task.
-- Scheduler is stateless — it produces a DailySchedule but doesn't store it, making it reusable.
-
-This design may be simplified or adjusted if the current structure proves to be a problem during implementation.
+Key decisions: Owner owns 1 or more Pets. ScheduledTask wraps a Task rather than inheriting from it because a scheduled task *has* a task, it isn't a special type of task. Scheduler is stateless — it produces a schedule but doesn't store it.
 
 **b. Design changes**
 
-After reviewing the skeleton, three issues came up:
+Three things changed after reviewing the skeleton:
 
-1. **`priority_value`, `category_weight`, and `end_minute` changed from methods to `@property`** — these originally had empty parentheses like regular methods, but they're purely derived values with no arguments or side effects. Making them properties means callers write `task.priority_value` instead of `task.priority_value()`, which is more natural in Python and matches how dataclass fields feel to use.
+1. `priority_value`, `category_weight`, and `end_minute` became `@property` instead of regular methods — they're just derived values with no arguments, so calling them like `task.priority_value` feels more natural than `task.priority_value()`.
 
-2. **`Task` input validation identified as a risk** — the `priority` and `preferred_time` fields accept any string with no guard. A typo would pass silently and cause a `KeyError` deep inside the scheduler. The fix (a `__post_init__` check) will be added during the implementation step.
+2. Added `__post_init__` validation on Task — without it, a typo in priority or preferred_time would silently pass and crash deep inside the scheduler with a KeyError, which would be confusing to debug.
 
-3. **`Owner.pets` vs `Scheduler` taking a single `Pet` — kept as-is by choice** — `Owner` stores a list of pets and has `add_pet()`, but `Scheduler` accepts just one `Pet` directly. This inconsistency was flagged but left intentionally: the app plans one pet's day at a time, so the scheduler doesn't need to loop over all pets. This is a documented simplification, not an oversight.
+3. Scheduler ended up taking the Owner (not a single Pet directly) — the original design had it taking one Pet, but since Owner aggregates all pets, it made more sense to just pass Owner and let it call `get_all_tasks()`.
 
 ---
 
@@ -46,19 +30,11 @@ After reviewing the skeleton, three issues came up:
 
 **a. Constraints and priorities**
 
-The scheduler considers three constraints, in this order of importance:
-
-1. **Priority level** (high / medium / low) — this is the primary sort key. A high-priority medication will always be considered before a low-priority grooming session, regardless of time preference.
-2. **Category weight** (medication > appointment > feeding > walk > grooming > other) — used as a tiebreaker when two tasks share the same priority level. This reflects real-world urgency: missing a medication is more consequential than skipping a walk.
-3. **Preferred time window** (morning / afternoon / evening / any) — the scheduler tries to place each task in its preferred window, but will fall back to the next available slot if the window has already passed. It won't displace a higher-priority task just to honour a time preference.
-
-The owner's `available_minutes` acts as a hard cap: any task that doesn't fit is deferred rather than over-scheduled.
+The scheduler ranks tasks by priority first (high > medium > low), then breaks ties by category weight (medication > appointment > feeding > walk > grooming). After sorting, it tries to place each task in its preferred time window and falls back to the next open slot if that window has passed. The owner's available_minutes is a hard cap — anything that doesn't fit gets deferred, not squeezed in.
 
 **b. Tradeoffs**
 
-The conflict detector checks for *exact time-range overlaps* in the final schedule — two tasks conflict only if their `[start, end)` intervals literally intersect. It does not predict soft conflicts like "these two tasks are both in the morning window and one might push the other late." 
-
-This is a reasonable tradeoff for a daily pet-care app: the greedy scheduler already prevents true overlaps by advancing the clock after each placement, so the detector's main value is as a safety net for manually constructed or externally imported schedules. Checking only exact overlaps keeps the logic simple (an O(n²) pair scan) and avoids false positives from overly cautious proximity warnings. A more sophisticated version could flag tasks within a configurable buffer window, but that would require exposing another setting to the user without much practical benefit at this scale.
+The conflict detector only flags exact time-range overlaps. It won't warn you that two morning tasks might run close together, just that they literally overlap. That's fine for this use case — the scheduler already prevents overlaps by advancing the clock after each placement, so the detector is really just a safety net. Keeping it simple avoids false positives and the logic stays easy to follow.
 
 ---
 
@@ -66,13 +42,11 @@ This is a reasonable tradeoff for a daily pet-care app: the greedy scheduler alr
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+Mostly for design feedback and filling in logic I wasn't sure about — like asking whether ScheduledTask should inherit from Task or wrap it, and getting help drafting the conflict detection loop. The most useful prompts were specific ones, like "given this sort key, will high priority always beat low priority even if they share a category?" rather than broad ones like "help me build a scheduler."
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+At one point Copilot suggested making Scheduler store the last generated schedule as an instance variable so it could be re-accessed later. I didn't go with it because it adds state that isn't needed — the app just calls `generate()` fresh each time the button is clicked. I verified by thinking through whether any part of the app actually needed to look up a past schedule, and it didn't.
 
 ---
 
@@ -80,13 +54,11 @@ This is a reasonable tradeoff for a daily pet-care app: the greedy scheduler alr
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+Sorting order, recurrence logic (daily/weekly/as_needed), conflict detection (overlapping vs back-to-back), task validation errors, filtering by pet and completion status, and scheduler edge cases like no pets or not enough time. These mattered because they're the core behaviors — if any of them are wrong the whole schedule is wrong.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+Pretty confident in the happy paths. The edge cases I'd still want to cover are things like what happens if two pets have the same name, or if a task's due_date is in the past — those could cause subtle bugs that the current tests don't catch.
 
 ---
 
@@ -94,12 +66,12 @@ This is a reasonable tradeoff for a daily pet-care app: the greedy scheduler alr
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+The separation between the backend logic and the UI worked out cleanly. Because all the scheduling logic lived in `pawpal_system.py`, I could write and test it completely independently before touching Streamlit at all.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+The scheduler is greedy — it just goes down the sorted list and places tasks one by one. That means it can miss combinations that would fit better. A smarter approach would try to optimize the full schedule rather than just picking tasks in order.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+Start with the data model before writing any logic. Getting the classes and relationships right early made every other step easier — the scheduler basically wrote itself once Owner, Pet, and Task were solid.
