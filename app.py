@@ -18,14 +18,10 @@ if "last_schedule" not in st.session_state:
 # ---------------------------------------------------------------------------
 # Sidebar: API key input
 # ---------------------------------------------------------------------------
-with st.sidebar:
-    st.header("⚙️ Settings")
-    api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        help="Required for the AI Care Advisor. Get yours at console.anthropic.com",
-    )
-    st.caption("Your key is never stored — it only lives in this session.")
+import os
+from dotenv import load_dotenv
+load_dotenv()
+api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
 # ---------------------------------------------------------------------------
 # Step 1: Owner & pet setup
