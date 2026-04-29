@@ -4,6 +4,11 @@ A smart daily scheduler for pet owners — sort, filter, detect conflicts, and g
 
 ---
 
+## Demo
+🎥 [Watch the Loom walkthrough](https://www.loom.com/share/6d805b326a944b6ba691bd0df4e4b11e)
+
+---
+
 ## Where this came from
 
 This project is an evolution of **PawPal (Modules 1–3)**, a rule-based pet care scheduler I built earlier in the course. The original goal was simple: help busy pet owners stay on top of their animals' routines by letting them add tasks, set priorities, and generate a conflict-free daily plan. It handled sorting by time of day, recurring tasks, conflict detection, and explained why each task got its slot. It worked well — but it had no real AI in it. Everything was hand-coded logic.
