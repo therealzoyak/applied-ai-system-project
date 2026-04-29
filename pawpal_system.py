@@ -1,19 +1,12 @@
 """
 PawPal+ — full implementation
 """
-
 from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Optional
 
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
 PRIORITY_VALUES = {"high": 3, "medium": 2, "low": 1}
-
 CATEGORY_WEIGHTS = {
     "medication": 5,
     "appointment": 4,
@@ -23,36 +16,29 @@ CATEGORY_WEIGHTS = {
     "other": 0,
 }
 
-# Time-window boundaries in minutes from DAY_START_HOUR
 TIME_WINDOWS = {
-    "morning":   (0,   240),   # 08:00 – 12:00
-    "afternoon": (240, 540),   # 12:00 – 17:00
-    "evening":   (540, 720),   # 17:00 – 20:00
+    "morning":   (0,   240),
+    "afternoon": (240, 540),
+    "evening":   (540, 720),
     "any":       (0,   720),
 }
 
-# Sort order for preferred_time (used by sort_tasks_by_time)
 TIME_WINDOW_ORDER = {"morning": 0, "afternoon": 1, "evening": 2, "any": 3}
+DAY_START_HOUR = 8
 
-DAY_START_HOUR = 8  # schedule anchored to 8:00 AM
-
-
-# ---------------------------------------------------------------------------
-# Task
-# ---------------------------------------------------------------------------
 
 @dataclass
 class Task:
     """A single pet-care activity."""
     title: str
     duration_minutes: int
-    priority: str = "medium"      # "high" | "medium" | "low"
-    category: str = "other"       # "feeding" | "walk" | "medication" | "appointment" | "grooming" | "other"
-    preferred_time: str = "any"   # "morning" | "afternoon" | "evening" | "any"
-    frequency: str = "daily"      # "daily" | "weekly" | "as_needed"
+    priority: str = "medium"
+    category: str = "other"
+    preferred_time: str = "any"
+    frequency: str = "daily"
     completed: bool = False
-    pet_name: str = ""            # set automatically by Pet.add_task()
-    due_date: Optional[date] = None  # used for recurring task scheduling
+    pet_name: str = ""
+    due_date: Optional[date] = None
 
     def __post_init__(self) -> None:
         if self.priority not in PRIORITY_VALUES:
@@ -71,17 +57,9 @@ class Task:
         return CATEGORY_WEIGHTS.get(self.category, 0)
 
     def sort_key(self) -> tuple:
-        """Higher value = scheduled earlier."""
         return (self.priority_value, self.category_weight)
 
     def mark_complete(self) -> Optional[Task]:
-        """
-        Mark this task as done and return the next occurrence if it recurs.
-
-        Returns a fresh Task (with completed=False and an updated due_date)
-        for 'daily' and 'weekly' tasks, or None for 'as_needed' tasks.
-        Uses timedelta so the due_date math is always accurate.
-        """
         self.completed = True
         if self.frequency == "daily":
             next_date = (self.due_date or date.today()) + timedelta(days=1)
@@ -92,7 +70,6 @@ class Task:
         return replace(self, completed=False, due_date=next_date)
 
     def next_occurrence(self) -> Optional[Task]:
-        """Return the next scheduled instance without marking this one complete."""
         if self.frequency == "daily":
             next_date = (self.due_date or date.today()) + timedelta(days=1)
         elif self.frequency == "weekly":
@@ -107,10 +84,6 @@ class Task:
         return f"{self.title} ({self.duration_minutes} min, {self.priority}, {self.category}, {status}{due})"
 
 
-# ---------------------------------------------------------------------------
-# Pet
-# ---------------------------------------------------------------------------
-
 @dataclass
 class Pet:
     """Stores pet details and owns a list of care tasks."""
@@ -120,12 +93,10 @@ class Pet:
     tasks: list[Task] = field(default_factory=list)
 
     def add_task(self, task: Task) -> None:
-        """Attach a task to this pet and record the pet's name on the task."""
         task.pet_name = self.name
         self.tasks.append(task)
 
     def get_tasks(self, include_completed: bool = False) -> list[Task]:
-        """Return tasks for this pet, optionally including completed ones."""
         if include_completed:
             return list(self.tasks)
         return [t for t in self.tasks if not t.completed]
@@ -134,10 +105,6 @@ class Pet:
         needs = ", ".join(self.special_needs) if self.special_needs else "none"
         return f"{self.name} ({self.species}) | special needs: {needs} | tasks: {len(self.tasks)}"
 
-
-# ---------------------------------------------------------------------------
-# Owner
-# ---------------------------------------------------------------------------
 
 class Owner:
     """Manages multiple pets and provides access to all their tasks."""
@@ -148,14 +115,9 @@ class Owner:
         self.pets: list[Pet] = []
 
     def add_pet(self, pet: Pet) -> None:
-        """Register a pet with this owner."""
         self.pets.append(pet)
 
     def get_all_tasks(self, include_completed: bool = False) -> list[Task]:
-        """
-        Collect tasks across all owned pets.
-        The Scheduler calls this to retrieve everything it needs to plan the day.
-        """
         all_tasks: list[Task] = []
         for pet in self.pets:
             all_tasks.extend(pet.get_tasks(include_completed=include_completed))
@@ -166,13 +128,6 @@ class Owner:
         pet_name: Optional[str] = None,
         completed: Optional[bool] = None,
     ) -> list[Task]:
-        """
-        Filter tasks across all pets by pet name and/or completion status.
-
-        - pet_name: if given, only return tasks belonging to that pet.
-        - completed: if True return only done tasks; if False return only pending;
-          if None return all tasks regardless of status.
-        """
         tasks = self.get_all_tasks(include_completed=True)
         if pet_name is not None:
             tasks = [t for t in tasks if t.pet_name == pet_name]
@@ -185,10 +140,6 @@ class Owner:
         pet_names = ", ".join(p.name for p in self.pets) if self.pets else "none"
         return f"{self.name} | {hours}h {mins:02d}m available | pets: {pet_names}"
 
-
-# ---------------------------------------------------------------------------
-# ScheduledTask  (output wrapper — not a user-facing input class)
-# ---------------------------------------------------------------------------
 
 class ScheduledTask:
     """A Task that has been placed into a concrete time slot."""
@@ -220,15 +171,11 @@ class ScheduledTask:
     def __str__(self) -> str:
         pet_label = f" [{self.task.pet_name}]" if self.task.pet_name else ""
         return (
-            f"[{self.start_time_str} – {self.end_time_str}]{pet_label}  "
-            f"{self.task.title}  ({self.task.duration_minutes} min, {self.task.priority})\n"
-            f"    → {self.reasoning}"
+            f"[{self.start_time_str} – {self.end_time_str}]{pet_label} "
+            f"{self.task.title} ({self.task.duration_minutes} min, {self.task.priority})\n"
+            f"  → {self.reasoning}"
         )
 
-
-# ---------------------------------------------------------------------------
-# DailySchedule  (output container)
-# ---------------------------------------------------------------------------
 
 class DailySchedule:
     """The result produced by Scheduler.generate()."""
@@ -237,7 +184,7 @@ class DailySchedule:
         self.owner = owner
         self.scheduled: list[ScheduledTask] = []
         self.deferred: list[Task] = []
-        self.conflicts: list[str] = []  # populated by Scheduler.detect_conflicts()
+        self.conflicts: list[str] = []
 
     @property
     def total_minutes_used(self) -> int:
@@ -254,44 +201,32 @@ class DailySchedule:
                 lines.append(str(st))
         else:
             lines.append("  (no tasks scheduled)")
-
         if self.conflicts:
             lines.append("-" * 60)
             lines.append("Conflicts detected:")
             for w in self.conflicts:
                 lines.append(f"  {w}")
-
         if self.deferred:
             lines.append("-" * 60)
             lines.append("Deferred (not enough time today):")
             for t in self.deferred:
                 pet_label = f" [{t.pet_name}]" if t.pet_name else ""
-                lines.append(f"  • {t.title}{pet_label}  ({t.duration_minutes} min, {t.priority})")
-
+                lines.append(f"  • {t.title}{pet_label} ({t.duration_minutes} min, {t.priority})")
         return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Scheduler  (the "brain")
-# ---------------------------------------------------------------------------
-
 class Scheduler:
     """
-    Retrieves tasks from the Owner's pets, sorts them by priority and
-    category importance, and fits them into the owner's available time.
-
-    How the Scheduler talks to Owner:
-        tasks = owner.get_all_tasks()
-    This single call aggregates tasks across all pets without the Scheduler
-    needing to know how many pets exist or how they're stored.
+    Retrieves tasks from the Owner's pets, sorts by priority and category
+    importance, and fits them into the owner's available time.
 
     Algorithm:
-        1. Call owner.get_all_tasks() — skips already-completed tasks.
-        2. Sort descending by (priority_value, category_weight).
-        3. For each task, find the earliest valid slot respecting preferred_time.
-        4. Place task if it fits within remaining available minutes; otherwise defer.
-        5. Run detect_conflicts() on the finished schedule.
-        6. Return a DailySchedule sorted chronologically.
+    1. Call owner.get_all_tasks() — skips already-completed tasks.
+    2. Sort descending by (priority_value, category_weight).
+    3. For each task, find the earliest valid slot respecting preferred_time.
+    4. Place task if task_duration + gap fits within remaining minutes; else defer.
+    5. Run detect_conflicts() on the finished schedule.
+    6. Return a DailySchedule sorted chronologically.
     """
 
     def __init__(self, owner: Owner) -> None:
@@ -307,14 +242,9 @@ class Scheduler:
         minutes_remaining = self.owner.available_minutes
 
         for task in sorted_tasks:
-            if task.duration_minutes > minutes_remaining:
-                schedule.deferred.append(task)
-                continue
-
             win_start, win_end = TIME_WINDOWS[task.preferred_time]
-            slot_start = current_minute
-            window_note = ""
 
+            # Determine slot start
             if task.preferred_time != "any":
                 if current_minute < win_start:
                     slot_start = win_start
@@ -332,10 +262,14 @@ class Scheduler:
                     slot_start = current_minute
                     window_note = f"Fits within the preferred {task.preferred_time} window."
             else:
+                slot_start = current_minute
                 window_note = "No time preference; placed at next available slot."
 
+            # Gap = idle time waiting for the window to open
             gap = max(0, slot_start - current_minute)
-            if task.duration_minutes > minutes_remaining - gap:
+
+            # FIX: defer only if task + gap together exceed what's left
+            if task.duration_minutes + gap > minutes_remaining:
                 schedule.deferred.append(task)
                 continue
 
@@ -352,25 +286,9 @@ class Scheduler:
 
     @staticmethod
     def sort_tasks_by_time(tasks: list[Task]) -> list[Task]:
-        """
-        Sort tasks by preferred time-of-day window: morning → afternoon → evening → any.
-
-        Uses TIME_WINDOW_ORDER so the sort key is a simple integer lookup
-        rather than comparing raw strings, which would sort alphabetically.
-        """
         return sorted(tasks, key=lambda t: TIME_WINDOW_ORDER.get(t.preferred_time, 3))
 
     def detect_conflicts(self, schedule: DailySchedule) -> list[str]:
-        """
-        Check the scheduled tasks for overlapping time ranges.
-
-        Two tasks conflict when their intervals overlap:
-            task A starts before task B ends AND task B starts before task A ends.
-
-        Returns a list of warning strings (empty list = no conflicts).
-        This is a lightweight O(n²) check — fine for daily pet-care scales
-        where n is typically under 20 tasks.
-        """
         warnings = []
         items = schedule.scheduled
         for i in range(len(items)):
@@ -390,7 +308,6 @@ class Scheduler:
             "medium": "Medium priority — scheduled after high-priority items.",
             "low": "Low priority — scheduled last.",
         }[task.priority]
-
         category_desc = {
             "medication": "Medications are critical and take precedence.",
             "appointment": "Appointments have fixed time commitments.",
@@ -399,6 +316,5 @@ class Scheduler:
             "grooming": "Grooming maintains hygiene and comfort.",
             "other": "General care task.",
         }.get(task.category, "General care task.")
-
         pet_label = f"For {task.pet_name}. " if task.pet_name else ""
         return f"{pet_label}{priority_desc} {category_desc} {window_note}"
