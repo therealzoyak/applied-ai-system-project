@@ -1,27 +1,23 @@
 import streamlit as st
 from pawpal_system import Owner, Pet, Task, Scheduler
 from ai_advisor import get_ai_advice
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 st.title("🐾 PawPal+")
 st.caption("Smart daily scheduling for your pets — sorted, filtered, and conflict-checked automatically.")
 
 # ---------------------------------------------------------------------------
-# Session state — initialised once; survives re-runs
+# Session state
 # ---------------------------------------------------------------------------
 if "owner" not in st.session_state:
     st.session_state.owner = None
-
 if "last_schedule" not in st.session_state:
     st.session_state.last_schedule = None
-
-# ---------------------------------------------------------------------------
-# Sidebar: API key input
-# ---------------------------------------------------------------------------
-import os
-from dotenv import load_dotenv
-load_dotenv()
-api_key = os.getenv("ANTHROPIC_API_KEY", "")
 
 # ---------------------------------------------------------------------------
 # Step 1: Owner & pet setup
@@ -46,7 +42,6 @@ if st.session_state.owner is None:
 
 owner: Owner = st.session_state.owner
 
-# Add a pet
 st.subheader("Add a pet")
 with st.form("pet_form"):
     pet_name = st.text_input("Pet name", value="Mochi")
@@ -98,7 +93,7 @@ else:
         target_pet.add_task(task)
         st.success(f"Added '{task_title}' to {pet_choice}.")
 
-    # --- Pending tasks with filter controls ---
+    # --- Pending tasks with filter controls + delete buttons ---
     all_tasks = owner.get_all_tasks()
     if all_tasks:
         st.subheader("Pending tasks")
@@ -127,18 +122,21 @@ else:
             display_tasks = sorted(display_tasks, key=lambda t: t.priority_value, reverse=True)
 
         PRIORITY_COLOR = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-        st.table([
-            {
-                "Pet": t.pet_name,
-                "Task": t.title,
-                "Duration": f"{t.duration_minutes} min",
-                "Priority": f"{PRIORITY_COLOR.get(t.priority, '')} {t.priority}",
-                "Category": t.category,
-                "Time": t.preferred_time,
-                "Recurs": t.frequency,
-            }
-            for t in display_tasks
-        ])
+
+        for i, t in enumerate(display_tasks):
+            col_info, col_btn = st.columns([5, 1])
+            with col_info:
+                st.markdown(
+                    f"**{t.title}** [{t.pet_name}] — "
+                    f"{PRIORITY_COLOR.get(t.priority, '')} {t.priority} | "
+                    f"{t.duration_minutes} min | {t.category} | {t.preferred_time}"
+                )
+            with col_btn:
+                if st.button("🗑️", key=f"delete_{t.pet_name}_{t.title}_{i}"):
+                    pet_obj = next((p for p in owner.pets if p.name == t.pet_name), None)
+                    if pet_obj and t in pet_obj.tasks:
+                        pet_obj.tasks.remove(t)
+                        st.rerun()
     else:
         st.info("No tasks yet — add one above.")
 
@@ -156,9 +154,8 @@ if st.button("Generate schedule"):
     else:
         scheduler = Scheduler(owner=owner)
         schedule = scheduler.generate()
-        st.session_state.last_schedule = schedule  # store for AI advisor
+        st.session_state.last_schedule = schedule
 
-        # --- Conflict warnings ---
         if schedule.conflicts:
             st.error(
                 f"**{len(schedule.conflicts)} scheduling conflict(s) detected — "
@@ -180,7 +177,6 @@ if st.button("Generate schedule"):
                 "medication": "💊", "appointment": "📅", "feeding": "🍽️",
                 "walk": "🦮", "grooming": "✂️", "other": "📋",
             }
-
             for st_task in schedule.scheduled:
                 icon = CATEGORY_ICON.get(st_task.task.category, "📋")
                 badge = PRIORITY_BADGE.get(st_task.task.priority, st_task.task.priority)
@@ -223,7 +219,7 @@ if schedule is None:
 elif not schedule.scheduled:
     st.info("No tasks were scheduled, so there's nothing for the advisor to analyze.")
 elif not api_key:
-    st.warning("Enter your Anthropic API key in the sidebar to use the AI advisor.")
+    st.warning("No API key found. Make sure your .env file contains ANTHROPIC_API_KEY.")
 else:
     if st.button("✨ Get AI advice for today's schedule"):
         with st.spinner("Retrieving care tips and generating advice..."):
@@ -237,7 +233,6 @@ else:
         st.subheader("Today's Care Advice")
         st.markdown(advice)
 
-        # Show which knowledge base tips were retrieved (transparency)
         from pet_care_kb import retrieve_tips
         raw_tasks = [st_task.task for st_task in schedule.scheduled]
         retrieved = retrieve_tips(raw_tasks, owner.pets, max_tips=6)
