@@ -65,8 +65,8 @@ Every API call is logged to `pawpal_advisor.log` with timestamps, token counts, 
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/therealzoyak/applied-ai-system-project.git
-cd applied-ai-system-project
+git clone https://github.com/therealzoyak/pawpal-plus.git
+cd pawpal-plus
 
 # 2. Create and activate a virtual environment
 python3 -m venv .venv
