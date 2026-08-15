@@ -190,7 +190,7 @@ Claude can also be confidently wrong. If a retrieved tip is outdated or the prom
 
 **Could this be misused?**
 
-The most realistic misuse is someone treating the AI advice as a substitute for a vet, especially for medication-related tasks. The system does not add a disclaimer to every response — something like "this is general guidance, not medical advice" — which it probably should. That is an easy fix I would make before putting this in front of real users.
+The most realistic misuse is someone treating the AI advice as a substitute for a vet, especially for medication-related tasks. Every successful AI response now carries a veterinary disclaimer, and the system prompt prohibits diagnosis or medication changes. That does not make the advice medically authoritative; it makes the boundary visible.
 
 **What surprised me during testing**
 
@@ -201,3 +201,9 @@ I expected the retrieval step to be the least interesting part. It ended up bein
 I used Claude as a coding partner throughout. One genuinely helpful moment: when structuring the RAG retrieval, Claude suggested scoring tips by species specificity — species-matched tips score higher than "all species" tips — before filtering by category. That made the retrieval noticeably more relevant and was the right call.
 
 One moment where it steered me wrong: Claude suggested hardcoding the API key directly in `app.py` as a quick fix for a sidebar issue. That worked locally, but GitHub's secret scanning flagged it immediately when I pushed. I had to revoke the key and switch to a `.env` file — which was the correct approach all along. It was a good reminder that quick workaround suggestions from AI tools do not always account for real-world consequences like public repos and security tooling.
+
+---
+
+## Origin and ownership
+
+PawPal began as a CodePath Applied AI project and grew through multiple milestones. I designed and implemented the class model, scheduler, sorting and filtering, recurrence logic, conflict detection, Streamlit integration, 26-test suite, retrieval strategy, and AI-advisor layer. CodePath provided the project structure and feedback checkpoints; the product decisions and implementation documented here are mine.

@@ -112,7 +112,9 @@ def get_ai_advice(
         "You must ground your advice in the retrieved context — do not give generic tips "
         "that aren't relevant to this specific schedule. "
         "Keep your response friendly, concise (3–5 bullet points), and actionable. "
-        "If there are scheduling conflicts, address them directly."
+        "If there are scheduling conflicts, address them directly. "
+        "Never diagnose a condition or recommend changing medication or dosage; "
+        "direct medical questions to a licensed veterinarian."
     )
 
     user_prompt = f"""Here is today's pet care schedule:
@@ -141,7 +143,7 @@ Do not repeat the schedule back — just give the advice."""
             response.usage.input_tokens,
             response.usage.output_tokens,
         )
-        return advice
+        return advice + "\n\n*General care guidance only—not veterinary advice.*"
 
     except anthropic.AuthenticationError:
         logger.error("Authentication failed — invalid API key.")
